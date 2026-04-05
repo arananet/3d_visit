@@ -4,22 +4,10 @@
  * SparkJS is World Labs' open-source renderer for SPZ Gaussian Splats.
  * It integrates with Three.js as a standard Object3D.
  *
- * CDN: https://unpkg.com/@sparkjsdev/spark/dist/spark.module.js
+ * Resolved via importmap in index.html: "@sparkjsdev/spark"
  */
 
-const SPARK_CDN = 'https://unpkg.com/@sparkjsdev/spark/dist/spark.module.js';
-
-let _SparkModule = null;
-
-async function getSparkModule() {
-  if (_SparkModule) return _SparkModule;
-  try {
-    _SparkModule = await import(SPARK_CDN);
-    return _SparkModule;
-  } catch (err) {
-    throw new Error(`Failed to load SparkJS from CDN: ${err.message}`);
-  }
-}
+import * as spark from '@sparkjsdev/spark';
 
 export class SplatRenderer {
   /** @type {import('./scene-manager.js').SceneManager} */
@@ -43,8 +31,6 @@ export class SplatRenderer {
    */
   async loadWorld(assets, style) {
     await this.dispose(); // remove previous splat
-
-    const spark = await getSparkModule();
 
     // Prefer 500k resolution — good quality / performance balance
     const spzUrl = assets.splats?.url500k ?? assets.splats?.url100k ?? assets.splats?.urlFullRes;

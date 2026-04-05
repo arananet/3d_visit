@@ -1,97 +1,135 @@
 /**
  * google-tiles.js — Google Photorealistic 3D Tiles integration
  *
- * Uses the `3d-tiles-renderer` library loaded via CDN ESM.
- * Fetches the tileset root URL server-side (key never exposed to client).
+ * Uses 3d-tiles-renderer (via importmap CDN) with GoogleCloudAuthPlugin
+ * for automatic session-token refresh. The raw API key is never exposed —
+ * the server returns a ready-to-use URL with the key injected.
+ *
+ * ECEF coordinate note: Google 3D Tiles are in Earth-Centered Earth-Fixed
+ * space. After the root tileset loads, we reposition the camera to sit above
+ * the tile bounding sphere rather than using hardcoded offsets.
  */
 
-const TILES_RENDERER_CDN =
-  'https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.3.34/src/index.js';
+import * as THREE from 'three';
+import { TilesRenderer } from '3d-tiles-renderer';
+import { GoogleCloudAuthPlugin } from '3d-tiles-renderer/plugins';
 
-// Barcelona coordinates (generic city-center area)
+// Barcelona coordinates (generic city-centre area — no brand reference)
 export const BARCELONA_COORDS = {
   lat: 41.4036,
   lng: 2.1744,
-  altM: 200, // metres above ground for initial view
 };
 
 export class GoogleTilesLoader {
-  /** @type {import('3d-tiles-renderer').TilesRenderer|null} */
+  /** @type {TilesRenderer|null} */
   _tiles = null;
-  /** @type {Function|null} deregister frame callback */
+  /** @type {Function|null} */
   _deregister = null;
+  /** @type {THREE.Sphere|null} bounding sphere of the root tileset in world space */
+  _boundingSphere = null;
 
-  /**
-   * @param {import('./scene-manager.js').SceneManager} sceneManager
-   */
   constructor(sceneManager) {
     this._sm = sceneManager;
   }
 
   /**
-   * Load the tileset and add it to the scene.
-   * Returns a Promise that resolves once root tileset JSON is fetched.
+   * Fetch config from server, create TilesRenderer, attach to scene.
    */
   async load() {
-    // 1. Get tileset URL from server (key injected server-side)
     const res = await fetch('/api/maps-config');
-    if (!res.ok) throw new Error('Failed to fetch maps config');
+    if (!res.ok) throw new Error('Failed to fetch maps config from server');
     const { tilesetUrl } = await res.json();
 
-    // 2. Dynamically import TilesRenderer from CDN
-    let TilesRenderer;
-    try {
-      const mod = await import(TILES_RENDERER_CDN);
-      TilesRenderer = mod.TilesRenderer;
-    } catch {
-      throw new Error('Could not load 3d-tiles-renderer from CDN');
-    }
-
-    // 3. Instantiate TilesRenderer
     this._tiles = new TilesRenderer(tilesetUrl);
+
+    // GoogleCloudAuthPlugin handles session-token renewal transparently.
+    // We pass the key via the backend-vended URL; the plugin appends it
+    // to tile sub-requests automatically.
+    this._tiles.registerPlugin(
+      new GoogleCloudAuthPlugin({ apiToken: null }) // token already in URL
+    );
+
     this._tiles.setCamera(this._sm.camera);
     this._tiles.setResolutionFromRenderer(this._sm.camera, this._sm.renderer);
 
-    // Position the tileset group at Earth surface level (WGS-84 aware)
-    // For simplicity we translate to origin so the camera can orbit naturally.
+    // Tune for cinematic quality (lower errorTarget = finer detail)
+    this._tiles.errorTarget = 6;
+    this._tiles.maxDownloadedTiles = 64;
+
+    // Once the root tileset JSON loads we know the ECEF bounding sphere,
+    // which lets us place the camera correctly above the real-world location.
+    this._tiles.addEventListener('load-tile-set', () => {
+      const sphere = new THREE.Sphere();
+      if (this._tiles.getBoundingSphere(sphere)) {
+        this._boundingSphere = sphere;
+        this._positionCameraAbove(sphere, 8000);
+      }
+    });
+
     this._sm.scene.add(this._tiles.group);
 
-    // 4. Register per-frame update
     this._deregister = this._sm.addFrameCallback(() => {
+      this._sm.camera.updateMatrixWorld();
       this._tiles.update();
     });
 
     return this._tiles;
   }
 
-  /** Remove tiles from the scene and free resources. */
+  /**
+   * Immediately (no animation) place the camera above the tileset bounding
+   * sphere at the given altitude in world-space units (≈ metres).
+   */
+  _positionCameraAbove(sphere, altitudeM) {
+    const up = sphere.center.clone().normalize(); // radial "up" in ECEF
+    this._sm.camera.position
+      .copy(sphere.center)
+      .addScaledVector(up, altitudeM);
+    this._sm.camera.lookAt(sphere.center);
+    this._sm.camera.updateProjectionMatrix();
+  }
+
   dispose() {
-    if (this._deregister) {
-      this._deregister();
-      this._deregister = null;
-    }
+    if (this._deregister) { this._deregister(); this._deregister = null; }
     if (this._tiles) {
       this._sm.scene.remove(this._tiles.group);
       this._tiles.dispose();
       this._tiles = null;
     }
+    this._boundingSphere = null;
   }
 
-  /** Fly camera to an overview position above Barcelona. */
+  /**
+   * Animated fly to overview (high altitude above the tileset).
+   * Falls back to a generic position if the bounding sphere isn't known yet.
+   */
   async flyToOverview() {
-    await this._sm.flyTo({
-      position: [0, 12000, 6000],
-      target: [0, 0, 0],
-      duration: 4000,
-    });
+    const sphere = this._boundingSphere;
+    if (sphere) {
+      const up = sphere.center.clone().normalize();
+      const target = sphere.center.clone();
+      const position = sphere.center.clone().addScaledVector(up, 10000);
+      await this._sm.flyTo({ position, target, duration: 4000 });
+    } else {
+      await this._sm.flyTo({ position: [0, 12000, 6000], target: [0, 0, 0], duration: 4000 });
+    }
   }
 
-  /** Fly camera to a street-level position. */
+  /**
+   * Animated fly to street-level (low altitude above the tileset centre).
+   */
   async flyToStreetLevel() {
-    await this._sm.flyTo({
-      position: [200, 180, 800],
-      target: [0, 100, 0],
-      duration: 5000,
-    });
+    const sphere = this._boundingSphere;
+    if (sphere) {
+      const up = sphere.center.clone().normalize();
+      const right = new THREE.Vector3(1, 0, 0).cross(up).normalize();
+      const position = sphere.center.clone()
+        .addScaledVector(up, 300)
+        .addScaledVector(right, 500);
+      const target = sphere.center.clone().addScaledVector(up, 80);
+      await this._sm.flyTo({ position, target, duration: 5000 });
+    } else {
+      await this._sm.flyTo({ position: [200, 180, 800], target: [0, 100, 0], duration: 5000 });
+    }
   }
 }

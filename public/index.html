@@ -6,12 +6,15 @@
   <title>Barcelona Virtual Tour</title>
   <link rel="stylesheet" href="/css/main.css" />
 
-  <!-- Import map: resolve bare module specifiers for Three.js -->
+  <!-- Import map: resolve bare module specifiers for all CDN libraries -->
   <script type="importmap">
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
+      "3d-tiles-renderer": "https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.3.34/src/index.js",
+      "3d-tiles-renderer/plugins": "https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.3.34/src/plugins/three/index.js",
+      "@sparkjsdev/spark": "https://cdn.jsdelivr.net/npm/@sparkjsdev/spark@latest/dist/spark.module.js"
     }
   }
   </script>
