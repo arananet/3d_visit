@@ -1,44 +1,34 @@
 /**
  * aerial-view.js — Google Aerial View API client
  *
- * Requests a drone fly-over video render for the Sagrada Família coordinates,
- * polls until it is ready, then plays it as a full-screen video overlay.
+ * Requests a drone fly-over render for the Sagrada Família coordinates,
+ * polls until ready, then plays it as a full-screen video overlay.
  */
 
-import { BARCELONA_COORDS } from './google-tiles.js';
-import { showError } from './main.js';
+import { SAGRADA_COORDS } from './google-tiles.js';
 
-const POLL_INTERVAL_MS = 3000;
-const MAX_POLLS = 60; // 3 min max wait
+const POLL_MS   = 3000;
+const MAX_POLLS = 60;   // 3-minute timeout
 
 export class AerialViewPlayer {
-  /** @type {HTMLVideoElement} */
-  _videoEl = document.getElementById('aerial-video');
-
-  /** @type {string|null} */
-  _videoId = null;
-
-  /** @type {string|null} */
+  _videoEl  = document.getElementById('aerial-video');
   _videoUri = null;
-
-  /** Whether this aerial video has already been rendered (cached for session). */
-  _rendered = false;
+  _prepared = false;
 
   /**
-   * Trigger a render request and begin polling.
-   * Resolves with the video URI when ready (or rejects on failure/timeout).
+   * Trigger a render request and poll until the video is ready.
+   * Safe to call multiple times — returns cached URI after first success.
    */
   async prepare() {
-    if (this._videoUri) return this._videoUri; // already resolved
+    if (this._videoUri) return this._videoUri;
 
-    // Kick off render
     const renderRes = await fetch('/api/aerial-view/render', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body:    JSON.stringify({
         coordinates: {
-          latitude: BARCELONA_COORDS.lat,
-          longitude: BARCELONA_COORDS.lng,
+          latitude:  SAGRADA_COORDS.lat,
+          longitude: SAGRADA_COORDS.lng,
         },
       }),
     });
@@ -49,35 +39,27 @@ export class AerialViewPlayer {
     }
 
     const { videoId } = await renderRes.json();
-    this._videoId = videoId;
-
-    // Poll for completion
-    this._videoUri = await this._poll(videoId);
+    this._videoUri    = await this._poll(videoId);
     return this._videoUri;
   }
 
   async _poll(videoId) {
     for (let i = 0; i < MAX_POLLS; i++) {
-      await sleep(POLL_INTERVAL_MS);
-
-      const statusRes = await fetch(`/api/aerial-view/status/${encodeURIComponent(videoId)}`);
-      if (!statusRes.ok) continue;
-
-      const data = await statusRes.json();
-
+      await sleep(POLL_MS);
+      const res = await fetch(`/api/aerial-view/status/${encodeURIComponent(videoId)}`);
+      if (!res.ok) continue;
+      const data = await res.json();
       if (data.state === 'ACTIVE' && data.videoUri) return data.videoUri;
       if (data.state === 'FAILED') throw new Error('Aerial View render failed');
     }
     throw new Error('Aerial View render timed out');
   }
 
-  /**
-   * Show the video overlay and play the footage.
-   * Returns a Promise that resolves when playback ends.
-   */
+  /** Show the video overlay and play. Resolves when playback ends. */
   async play() {
     if (!this._videoUri) {
-      throw new Error('prepare() must be called before play()');
+      // If prepare() wasn't awaited yet, try once more
+      await this.prepare();
     }
 
     this._videoEl.src = this._videoUri;
@@ -88,25 +70,16 @@ export class AerialViewPlayer {
         this._videoEl.classList.add('visible');
         try {
           await this._videoEl.play();
-        } catch (e) {
-          // Autoplay blocked — still resolve so story can continue
-          console.warn('[aerial-view] Autoplay blocked:', e.message);
+        } catch {
+          // Autoplay blocked — still resolve so story advances
           resolve();
         }
       };
-
-      this._videoEl.onended = () => {
-        this.hide();
-        resolve();
-      };
-
-      this._videoEl.onerror = (e) => {
-        reject(new Error('Aerial video playback error'));
-      };
+      this._videoEl.onended = () => { this.hide(); resolve(); };
+      this._videoEl.onerror = () => reject(new Error('Aerial video playback error'));
     });
   }
 
-  /** Hide and unload the video element. */
   hide() {
     this._videoEl.classList.remove('visible');
     this._videoEl.pause();
@@ -114,6 +87,4 @@ export class AerialViewPlayer {
   }
 }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }

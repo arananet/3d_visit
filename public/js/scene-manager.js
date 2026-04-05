@@ -1,24 +1,25 @@
 /**
  * scene-manager.js — Three.js renderer, camera, and animation loop
+ *
+ * The render loop runs via requestAnimationFrame and calls three kinds of
+ * registered callbacks in order every frame:
+ *   1. frameCallbacks  — update logic (tiles, splats, etc.)
+ *   2. renderer.render — main scene draw
+ *   3. overlayCallbacks — drawn on top with autoClear=false (transitions)
  */
 
 import * as THREE from 'three';
 
 export class SceneManager {
-  /** @type {HTMLCanvasElement} */
   canvas;
-  /** @type {THREE.WebGLRenderer} */
   renderer;
-  /** @type {THREE.Scene} */
   scene;
-  /** @type {THREE.PerspectiveCamera} */
   camera;
 
-  // Active animation mixins (called each frame by external systems)
   _frameCallbacks = new Set();
-
-  // Camera animation state
+  _overlayCallbacks = new Set();
   _cameraAnim = null;
+  _mapsConfig = null; // cached { tilesetUrl }
 
   constructor(canvas) {
     this.canvas = canvas;
@@ -33,7 +34,7 @@ export class SceneManager {
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
-      logarithmicDepthBuffer: true, // required for 3D Tiles depth precision
+      logarithmicDepthBuffer: true, // required for Google 3D Tiles depth precision
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -44,8 +45,7 @@ export class SceneManager {
 
   _initScene() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x050a14);
-    this.scene.fog = new THREE.Fog(0x050a14, 5000, 80000);
+    this.scene.background = new THREE.Color(0x87ceeb); // Mediterranean sky
   }
 
   _initCamera() {
@@ -55,15 +55,13 @@ export class SceneManager {
       0.1,
       1_000_000
     );
-    // Start high above the Sagrada Família
+    // Start high above the Sagrada Família — overridden once tiles load
     this.camera.position.set(0, 8000, 0);
     this.camera.lookAt(0, 0, 0);
   }
 
   _initLights() {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-    this.scene.add(ambient);
-
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
     const sun = new THREE.DirectionalLight(0xffd9a0, 1.2);
     sun.position.set(5000, 10000, 5000);
     this.scene.add(sun);
@@ -71,61 +69,95 @@ export class SceneManager {
 
   _bindResize() {
     window.addEventListener('resize', () => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      this.camera.aspect = w / h;
+      this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
-      this.renderer.setSize(w, h);
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
   }
 
-  /** Called once after construction to begin the render loop. */
+  /** Fetch and cache the maps config from the server. */
+  async preloadMapsConfig() {
+    try {
+      const res = await fetch('/api/maps-config');
+      if (!res.ok) throw new Error(`maps-config ${res.status}`);
+      this._mapsConfig = await res.json();
+    } catch (err) {
+      console.warn('[scene-manager] Maps config unavailable:', err.message);
+      this._mapsConfig = null;
+    }
+    return this._mapsConfig;
+  }
+
+  getMapsConfig() {
+    return this._mapsConfig;
+  }
+
+  /** Start the render loop. */
   start() {
-    return new Promise((resolve) => {
-      this._loop();
-      resolve();
-    });
+    this._loop();
   }
 
   _loop() {
     requestAnimationFrame(() => this._loop());
 
-    // Advance camera animation
+    // 1. Per-frame update callbacks (tiles, splats)
+    for (const cb of this._frameCallbacks) {
+      try { cb(); } catch (e) { console.warn('[frame cb]', e.message); }
+    }
+
+    // 2. Advance camera animation
     if (this._cameraAnim) this._cameraAnim.tick();
 
-    // External per-frame callbacks (tiles update, splat update, etc.)
-    for (const cb of this._frameCallbacks) cb();
-
+    // 3. Main scene render
+    this.renderer.autoClear = true;
     this.renderer.render(this.scene, this.camera);
+
+    // 4. Overlay callbacks (transitions rendered on top, no clear)
+    if (this._overlayCallbacks.size > 0) {
+      this.renderer.autoClear = false;
+      for (const cb of this._overlayCallbacks) {
+        try { cb(); } catch (e) { console.warn('[overlay cb]', e.message); }
+      }
+      this.renderer.autoClear = true;
+    }
   }
 
-  /** Register a per-frame callback (returns a deregister fn). */
+  /** Register a per-frame update callback. Returns a deregister function. */
   addFrameCallback(fn) {
     this._frameCallbacks.add(fn);
     return () => this._frameCallbacks.delete(fn);
   }
 
   /**
-   * Smoothly fly the camera to a target position + lookAt over `duration` ms.
-   * Returns a Promise that resolves when the animation completes.
+   * Register a callback that renders on top of the main scene each frame
+   * (autoClear is false when it runs). Returns a deregister function.
    */
-  flyTo({ position, target = new THREE.Vector3(0, 0, 0), duration = 3000 }) {
+  addOverlayCallback(fn) {
+    this._overlayCallbacks.add(fn);
+    return () => this._overlayCallbacks.delete(fn);
+  }
+
+  /**
+   * Smoothly fly the camera to a position + lookAt target.
+   * @param {{ position: THREE.Vector3|number[], target?: THREE.Vector3|number[], duration?: number }}
+   */
+  flyTo({ position, target = [0, 0, 0], duration = 3000 }) {
     return new Promise((resolve) => {
       const startPos = this.camera.position.clone();
+
+      // Compute current look-at target as a point 100 units ahead
       const startTarget = new THREE.Vector3();
       this.camera.getWorldDirection(startTarget);
       startTarget.multiplyScalar(100).add(this.camera.position);
 
-      const endPos = new THREE.Vector3(...(Array.isArray(position) ? position : [position.x, position.y, position.z]));
-      const endTarget = target instanceof THREE.Vector3 ? target : new THREE.Vector3(...target);
+      const endPos = toVec3(position);
+      const endTarget = toVec3(target);
 
-      const clock = new THREE.Clock();
-      clock.start();
+      const startTime = performance.now();
 
       this._cameraAnim = {
         tick: () => {
-          const elapsed = clock.getElapsedTime() * 1000;
-          const t = Math.min(elapsed / duration, 1);
+          const t = Math.min((performance.now() - startTime) / duration, 1);
           const ease = easeInOutCubic(t);
 
           this.camera.position.lerpVectors(startPos, endPos, ease);
@@ -142,7 +174,7 @@ export class SceneManager {
     });
   }
 
-  /** Remove all objects added by a specific scene (by userData.sceneId). */
+  /** Remove all objects tagged with a given sceneId from userData. */
   clearScene(sceneId) {
     const toRemove = [];
     this.scene.traverse((obj) => {
@@ -150,16 +182,19 @@ export class SceneManager {
     });
     for (const obj of toRemove) {
       this.scene.remove(obj);
-      if (obj.geometry) obj.geometry.dispose();
-      if (obj.material) {
-        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        mats.forEach((m) => m.dispose());
-      }
+      obj.geometry?.dispose();
+      [obj.material].flat().forEach((m) => m?.dispose());
     }
   }
 }
 
-// ── Easing ────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function toVec3(v) {
+  if (v instanceof THREE.Vector3) return v.clone();
+  if (Array.isArray(v)) return new THREE.Vector3(...v);
+  return new THREE.Vector3(v.x, v.y, v.z);
+}
+
 function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }

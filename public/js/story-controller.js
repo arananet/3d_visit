@@ -1,255 +1,210 @@
 /**
- * story-controller.js — Orchestrates the 8 story points of the virtual tour
+ * story-controller.js — Orchestrates the 8 story-point guided tour
  *
  * Story points:
- *   0 — Intro         (Three.js + Google 3D Tiles, aerial overview)
- *   1 — Flyover       (Google Aerial View video overlay)
- *   2 — Street Level  (Three.js + Google 3D Tiles, ground level)
- *   3 — Portal        (GLSL warp transition — gateway to AI worlds)
- *   4 — Cyberpunk     (World Labs SPZ Gaussian Splat)
- *   5 — Sketch        (World Labs SPZ Gaussian Splat)
- *   6 — Futuristic    (World Labs SPZ Gaussian Splat)
- *   7 — Return        (Fade back to 3D Tiles overview)
+ *   0 — Sagrada Família   (Google 3D Tiles overview)
+ *   1 — Drone Flyover     (Google Aerial View video)
+ *   2 — At Ground Level   (3D Tiles street view)
+ *   3 — The Portal        (GLSL warp transition)
+ *   4 — Cyberpunk         (World Labs Gaussian Splat)
+ *   5 — Sketch            (World Labs Gaussian Splat)
+ *   6 — Year 2150         (World Labs Gaussian Splat)
+ *   7 — Return            (Fade back to reality)
  */
 
 import { GoogleTilesLoader } from './google-tiles.js';
-import { AerialViewPlayer } from './aerial-view.js';
-import { SplatRenderer } from './splat-renderer.js';
+import { AerialViewPlayer }  from './aerial-view.js';
+import { SplatRenderer }     from './splat-renderer.js';
 import { TransitionManager, TransitionType } from './transitions.js';
-import { showError } from './main.js';
-
-// ── DOM refs ──────────────────────────────────────────────────────────────────
-const storyTitle = document.getElementById('story-title');
-const storySubtitle = document.getElementById('story-subtitle');
-const progressDots = document.getElementById('progress-dots');
-const styleBadge = document.getElementById('style-badge');
+import { showError }         from './ui.js';
 
 const STORY_POINTS = [
-  { id: 0, name: 'Sagrada Família',   subtitle: 'Barcelona · Overview',      type: 'tiles-overview' },
-  { id: 1, name: 'Drone Flyover',     subtitle: 'Cinematic aerial footage',  type: 'aerial-video'   },
-  { id: 2, name: 'At Ground Level',   subtitle: 'Walking the plaza',         type: 'tiles-street'   },
-  { id: 3, name: 'The Portal',        subtitle: 'Stepping into the dream',   type: 'portal'         },
-  { id: 4, name: 'Cyberpunk',         subtitle: 'AI Dreamscape',             type: 'splat', style: 'cyberpunk'  },
-  { id: 5, name: 'Sketch',            subtitle: 'AI Dreamscape',             type: 'splat', style: 'sketch'     },
-  { id: 6, name: 'Year 2150',         subtitle: 'AI Dreamscape',             type: 'splat', style: 'futuristic' },
-  { id: 7, name: 'Sagrada Família',   subtitle: 'Back to reality',           type: 'return'         },
+  { id: 0, name: 'Sagrada Família', subtitle: 'Barcelona · Overview',    type: 'tiles-overview' },
+  { id: 1, name: 'Drone Flyover',   subtitle: 'Cinematic aerial footage', type: 'aerial-video'   },
+  { id: 2, name: 'At Ground Level', subtitle: 'Walking the plaza',        type: 'tiles-street'   },
+  { id: 3, name: 'The Portal',      subtitle: 'Stepping into the dream',  type: 'portal'         },
+  { id: 4, name: 'Cyberpunk',       subtitle: 'AI Dreamscape',            type: 'splat', style: 'cyberpunk'  },
+  { id: 5, name: 'Sketch',          subtitle: 'AI Dreamscape',            type: 'splat', style: 'sketch'     },
+  { id: 6, name: 'Year 2150',       subtitle: 'AI Dreamscape',            type: 'splat', style: 'futuristic' },
+  { id: 7, name: 'Sagrada Família', subtitle: 'Back to reality',          type: 'return'         },
 ];
 
 export class StoryController {
   _current = -1;
-  _transitioning = false;
-
-  /** @type {import('./scene-manager.js').SceneManager} */
-  _sm;
-  /** @type {import('./worldlabs.js').WorldLabsClient} */
-  _wl;
-
-  _tilesLoader;
-  _aerialPlayer;
-  _splatRenderer;
-  _transitions;
+  _busy = false;
 
   constructor(sceneManager, worldLabsClient) {
-    this._sm = sceneManager;
-    this._wl = worldLabsClient;
+    this._sm    = sceneManager;
+    this._wl    = worldLabsClient;
+    this._tiles = new GoogleTilesLoader(sceneManager);
+    this._aerial = new AerialViewPlayer();
+    this._splat  = new SplatRenderer(sceneManager);
+    this._trans  = new TransitionManager(sceneManager);
 
-    this._tilesLoader = new GoogleTilesLoader(sceneManager);
-    this._aerialPlayer = new AerialViewPlayer();
-    this._splatRenderer = new SplatRenderer(sceneManager);
-    this._transitions = new TransitionManager(sceneManager.renderer);
+    this._titleEl    = document.getElementById('story-title');
+    this._subtitleEl = document.getElementById('story-subtitle');
+    this._dotsEl     = document.getElementById('progress-dots');
+    this._badgeEl    = document.getElementById('style-badge');
 
     this._buildDots();
+
+    // Load 3D Tiles eagerly in the background
+    this._tiles.load().catch((err) =>
+      console.warn('[story] 3D Tiles load error:', err.message)
+    );
+
+    // Warm up Aerial View video in background
+    this._aerial.prepare().catch(() => {});
   }
 
   _buildDots() {
-    progressDots.innerHTML = '';
+    this._dotsEl.innerHTML = '';
     for (const sp of STORY_POINTS) {
-      const dot = document.createElement('div');
-      dot.className = 'dot';
-      dot.title = sp.name;
-      progressDots.appendChild(dot);
+      const d = document.createElement('div');
+      d.className = 'dot';
+      d.title = sp.name;
+      this._dotsEl.appendChild(d);
     }
   }
 
-  _updateDots(index) {
-    const dots = progressDots.querySelectorAll('.dot');
-    dots.forEach((d, i) => d.classList.toggle('active', i === index));
+  _updateDots(i) {
+    this._dotsEl.querySelectorAll('.dot').forEach((d, idx) =>
+      d.classList.toggle('active', idx === i)
+    );
   }
 
-  _updateHUD(sp) {
-    storyTitle.textContent = sp.name;
-    storyTitle.classList.add('visible');
+  _showHUD(sp) {
+    this._titleEl.textContent = sp.name;
+    this._titleEl.classList.add('visible');
+    this._subtitleEl.textContent = sp.subtitle;
+    this._subtitleEl.classList.add('visible');
 
-    storySubtitle.textContent = sp.subtitle;
-    storySubtitle.classList.add('visible');
-
-    // Style badge for AI dreamscape scenes
     if (sp.style) {
-      styleBadge.textContent = `AI · ${sp.style}`;
-      styleBadge.className = `visible ${sp.style}`;
+      this._badgeEl.textContent = `AI · ${sp.style}`;
+      this._badgeEl.className   = `visible ${sp.style}`;
     } else {
-      styleBadge.className = '';
-      styleBadge.textContent = '';
+      this._badgeEl.className   = '';
+      this._badgeEl.textContent = '';
     }
   }
 
-  /** Navigate to a specific story point index. */
+  _hideHUD() {
+    this._titleEl.classList.remove('visible');
+    this._subtitleEl.classList.remove('visible');
+  }
+
   async goTo(index) {
-    if (this._transitioning) return;
+    if (this._busy) return;
     if (index < 0 || index >= STORY_POINTS.length) return;
     if (index === this._current) return;
 
-    this._transitioning = true;
+    this._busy = true;
     const sp = STORY_POINTS[index];
 
     try {
-      await this._leaveCurrentScene();
-      await this._enterScene(sp, index);
+      this._hideHUD();
+      await this._leave(this._current);
+      await this._enter(sp, index);
     } catch (err) {
-      console.error(`[story] Error at scene ${sp.name}:`, err);
-      showError(`Scene error: ${err.message}. Skipping…`);
+      console.error(`[story] Scene "${sp.name}" error:`, err);
+      showError(`${sp.name}: ${err.message} — continuing…`);
     } finally {
-      this._transitioning = false;
+      this._busy = false;
     }
   }
 
-  next() {
-    const next = this._current + 1;
-    if (next < STORY_POINTS.length) this.goTo(next);
-  }
+  next() { this.goTo(this._current + 1); }
+  prev() { this.goTo(this._current - 1); }
 
-  prev() {
-    const prev = this._current - 1;
-    if (prev >= 0) this.goTo(prev);
-  }
-
-  // ── Scene transitions ───────────────────────────────────────────────────────
-
-  async _leaveCurrentScene() {
-    if (this._current < 0) return;
-
-    const current = STORY_POINTS[this._current];
-
-    // Fade out title
-    storyTitle.classList.remove('visible');
-    storySubtitle.classList.remove('visible');
-
-    switch (current.type) {
-      case 'aerial-video':
-        this._aerialPlayer.hide();
-        break;
-      case 'splat':
-        await this._transitions.play(TransitionType.DISSOLVE, 600, 'in');
-        await this._splatRenderer.dispose();
-        break;
-      case 'portal':
-        // No cleanup needed
-        break;
-      default:
-        await this._transitions.play(TransitionType.FADE, 500, 'in');
+  // ── Leave current scene ─────────────────────────────────────────────────────
+  async _leave(index) {
+    if (index < 0) return;
+    const sp = STORY_POINTS[index];
+    if (sp.type === 'aerial-video') {
+      this._aerial.hide();
+    } else if (sp.type === 'splat') {
+      await this._trans.play(TransitionType.DISSOLVE, 500, 'in');
+      await this._splat.dispose();
+    } else if (sp.type !== 'portal') {
+      await this._trans.play(TransitionType.FADE, 400, 'in');
     }
   }
 
-  async _enterScene(sp, index) {
+  // ── Enter new scene ─────────────────────────────────────────────────────────
+  async _enter(sp, index) {
     this._current = index;
     this._updateDots(index);
 
     switch (sp.type) {
-      case 'tiles-overview':
-        await this._sceneOverview();
-        break;
-      case 'aerial-video':
-        await this._sceneAerialVideo();
-        break;
-      case 'tiles-street':
-        await this._sceneStreetLevel();
-        break;
-      case 'portal':
-        await this._scenePortal();
-        break;
-      case 'splat':
-        await this._sceneSplat(sp.style);
-        break;
-      case 'return':
-        await this._sceneReturn();
-        break;
+      case 'tiles-overview': await this._sceneOverview(); break;
+      case 'aerial-video':   await this._sceneAerial();   break;
+      case 'tiles-street':   await this._sceneStreet();   break;
+      case 'portal':         await this._scenePortal();   break;
+      case 'splat':          await this._sceneSplat(sp.style); break;
+      case 'return':         await this._sceneReturn();   break;
     }
 
-    this._updateHUD(sp);
-    await this._transitions.play(TransitionType.FADE, 600, 'out');
+    this._showHUD(sp);
+    await this._trans.play(TransitionType.FADE, 500, 'out');
   }
 
-  // ── Individual scenes ───────────────────────────────────────────────────────
+  // ── Scene handlers ──────────────────────────────────────────────────────────
 
   async _sceneOverview() {
-    this._sm.clearScene('splat');
-    if (!this._tilesLoader._tiles) {
-      await this._tilesLoader.load().catch((err) => {
-        console.warn('[story] 3D Tiles unavailable:', err.message);
-      });
-    }
-    await this._tilesLoader.flyToOverview().catch(() => {});
+    this._tiles.setVisible(true);
+    await this._tiles.flyToOverview();
   }
 
-  async _sceneAerialVideo() {
-    // Pre-fetch the aerial video in the background if not already started
-    this._aerialPlayer.prepare().catch((err) => {
-      console.warn('[story] Aerial video prepare error:', err.message);
-    });
-
+  async _sceneAerial() {
+    this._tiles.setVisible(false);
     try {
-      await this._aerialPlayer.play();
+      await this._aerial.play();
     } catch (err) {
-      console.warn('[story] Aerial video unavailable:', err.message);
-      showError('Aerial footage unavailable — continuing tour…');
-      // Continue story after a short delay
+      console.warn('[story] Aerial video error:', err.message);
+      showError('Aerial footage unavailable — moving on…');
       await sleep(2000);
     }
   }
 
-  async _sceneStreetLevel() {
-    await this._tilesLoader.flyToStreetLevel().catch(() => {});
+  async _sceneStreet() {
+    this._tiles.setVisible(true);
+    await this._tiles.flyToStreetLevel();
   }
 
   async _scenePortal() {
-    // Full warp portal — dramatic transition into AI worlds
-    await this._transitions.play(TransitionType.WARP, 2500, 'in');
-    // Hold for a beat
-    await sleep(400);
+    // Full warp — holds for 2.5 s before resolving
+    await this._trans.play(TransitionType.WARP, 2500, 'in');
+    this._tiles.setVisible(false);
+    await sleep(300);
   }
 
   async _sceneSplat(style) {
+    // Show a loading hint if world isn't done yet
+    if (!this._wl.isReady(style)) {
+      this._titleEl.textContent  = `Generating ${style} world…`;
+      this._subtitleEl.textContent = 'This takes about a minute';
+      this._titleEl.classList.add('visible');
+      this._subtitleEl.classList.add('visible');
+    }
+
     try {
-      // Show a loading indicator if world isn't ready yet
-      if (!this._wl.isReady(style)) {
-        storyTitle.textContent = `Generating ${style} world…`;
-        storyTitle.classList.add('visible');
-      }
-
       const assets = await this._wl.getAssets(style);
-      await this._splatRenderer.loadWorld(assets, style);
-
-      // Position camera for splat viewing
-      await this._sm.flyTo({
-        position: [0, 300, 600],
-        target: [0, 100, 0],
-        duration: 2000,
-      });
+      await this._splat.loadWorld(assets, style);
+      await this._sm.flyTo({ position: [0, 300, 600], target: [0, 100, 0], duration: 2000 });
     } catch (err) {
-      console.error(`[story] Splat scene error (${style}):`, err.message);
-      showError(`${style} world unavailable — skipping to next scene…`);
-      await sleep(2000);
+      console.error(`[story] Splat error (${style}):`, err.message);
+      showError(`${style} world unavailable — skipping…`);
+      await sleep(1500);
       this.next();
     }
   }
 
   async _sceneReturn() {
-    await this._splatRenderer.dispose();
-    await this._transitions.play(TransitionType.DISSOLVE, 800, 'in');
-    await this._tilesLoader.flyToOverview().catch(() => {});
+    await this._splat.dispose();
+    await this._trans.play(TransitionType.DISSOLVE, 700, 'in');
+    this._tiles.setVisible(true);
+    await this._tiles.flyToOverview();
   }
 }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }

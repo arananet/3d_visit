@@ -6,15 +6,15 @@
   <title>Sagrada Família — Virtual Tour</title>
   <link rel="stylesheet" href="/css/main.css" />
 
-  <!-- Import map: resolve bare module specifiers for all CDN libraries -->
+  <!-- Import map: bare specifier → CDN ESM URL -->
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
-      "3d-tiles-renderer": "https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.3.34/src/index.js",
-      "3d-tiles-renderer/plugins": "https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.3.34/src/plugins/three/index.js",
-      "@sparkjsdev/spark": "https://cdn.jsdelivr.net/npm/@sparkjsdev/spark@latest/dist/spark.module.js"
+      "three":                  "https://esm.sh/three@0.165.0",
+      "three/addons/":          "https://esm.sh/three@0.165.0/examples/jsm/",
+      "3d-tiles-renderer":      "https://esm.sh/3d-tiles-renderer@0.3.34",
+      "3d-tiles-renderer/plugins": "https://esm.sh/3d-tiles-renderer@0.3.34/src/plugins/three/index.js",
+      "@sparkjsdev/spark":      "https://esm.sh/@sparkjsdev/spark"
     }
   }
   </script>
