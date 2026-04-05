@@ -25,14 +25,14 @@ const progressDots = document.getElementById('progress-dots');
 const styleBadge = document.getElementById('style-badge');
 
 const STORY_POINTS = [
-  { id: 0, name: 'Barcelona',      subtitle: 'Overview',      type: 'tiles-overview' },
-  { id: 1, name: 'Drone Flyover',  subtitle: 'Real footage',  type: 'aerial-video'   },
-  { id: 2, name: 'Street Level',   subtitle: 'Ground view',   type: 'tiles-street'   },
-  { id: 3, name: 'The Portal',     subtitle: 'Step through',  type: 'portal'         },
-  { id: 4, name: 'Cyberpunk',      subtitle: 'AI Dreamscape', type: 'splat', style: 'cyberpunk'  },
-  { id: 5, name: 'Sketch',         subtitle: 'AI Dreamscape', type: 'splat', style: 'sketch'     },
-  { id: 6, name: 'Futuristic',     subtitle: 'AI Dreamscape', type: 'splat', style: 'futuristic' },
-  { id: 7, name: 'Return',         subtitle: 'Back to reality', type: 'return'       },
+  { id: 0, name: 'Sagrada Família',   subtitle: 'Barcelona · Overview',      type: 'tiles-overview' },
+  { id: 1, name: 'Drone Flyover',     subtitle: 'Cinematic aerial footage',  type: 'aerial-video'   },
+  { id: 2, name: 'At Ground Level',   subtitle: 'Walking the plaza',         type: 'tiles-street'   },
+  { id: 3, name: 'The Portal',        subtitle: 'Stepping into the dream',   type: 'portal'         },
+  { id: 4, name: 'Cyberpunk',         subtitle: 'AI Dreamscape',             type: 'splat', style: 'cyberpunk'  },
+  { id: 5, name: 'Sketch',            subtitle: 'AI Dreamscape',             type: 'splat', style: 'sketch'     },
+  { id: 6, name: 'Year 2150',         subtitle: 'AI Dreamscape',             type: 'splat', style: 'futuristic' },
+  { id: 7, name: 'Sagrada Família',   subtitle: 'Back to reality',           type: 'return'         },
 ];
 
 export class StoryController {

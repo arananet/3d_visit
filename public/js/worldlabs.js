@@ -13,27 +13,27 @@
 const POLL_INTERVAL_MS = 5000;
 const MAX_POLLS = 120; // 10 min max (plus model ~5 min)
 
-/** Prompts for each style. Tuned to produce convincing Barcelona environments. */
+/** Prompts for each style. Centred on the Sagrada Família and its surroundings. */
 const WORLD_PROMPTS = {
   cyberpunk: {
     prompt:
-      'Cyberpunk version of a Barcelona urban street at night, neon signs in Catalan, ' +
-      'rain-slicked pavement reflections, dark moody sky, Gothic Quarter architecture ' +
-      'fused with holographic advertisements, dense fog, cinematic atmosphere',
+      'Cyberpunk reimagining of the Sagrada Família basilica at night, towering stone spires ' +
+      'wrapped in neon-lit scaffolding and holographic projections, rain-slicked Avinguda de Gaudí, ' +
+      'dark moody sky with purple haze, Catalan neon signs, dense cinematic fog, photorealistic',
     model: 'Marble 0.1-plus',
   },
   sketch: {
     prompt:
-      'Hand-drawn pencil and ink architectural sketch of a Barcelona street, ' +
-      'Eixample block architecture, loose expressive linework, light watercolour wash, ' +
-      'white paper background, artistic illustration style',
+      'Hand-drawn pencil and ink architectural sketch of the Sagrada Família, Gaudí organic spires ' +
+      'rendered in loose expressive linework with cross-hatching, light sepia watercolour wash, ' +
+      'white paper background, architectural illustration style, detailed façade ornament',
     model: 'Marble 0.1-plus',
   },
   futuristic: {
     prompt:
-      'Clean utopian futuristic Barcelona street, white biomorphic architecture, ' +
-      'lush vertical gardens, calm blue sky, autonomous electric vehicles, pedestrian plazas, ' +
-      'soft warm daylight, photorealistic render',
+      'Utopian vision of the Sagrada Família in 2150, basilica fully completed with luminous white ' +
+      'biomorphic spires, lush vertical gardens climbing the façades, solar canopies over the plaza, ' +
+      'calm Mediterranean sky, photorealistic render, golden hour light',
     model: 'Marble 0.1-plus',
   },
 };

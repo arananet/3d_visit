@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
-  title: Barcelona Virtual Tour API
+  title: Sagrada Família Virtual Tour API
   description: |
-    Server-side proxy API for the Barcelona Virtual Tour experience.
+    Server-side proxy API for the Sagrada Família Virtual Tour experience.
     All third-party API keys (Google Maps, World Labs) are injected server-side.
     Clients never receive raw API credentials.
   version: 1.0.0
   contact:
-    name: Barcelona Virtual Tour
+    name: Sagrada Família Virtual Tour
 
 servers:
   - url: /api
@@ -265,7 +265,7 @@ components:
         prompt:
           type: string
           description: Text description of the world to generate
-          example: Cyberpunk version of Barcelona urban street, neon lights, rain reflections
+          example: Cyberpunk reimagining of the Sagrada Família at night, neon-lit spires, rain reflections
         style:
           type: string
           enum: [cyberpunk, sketch, futuristic]

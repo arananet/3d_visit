@@ -166,7 +166,7 @@ app.post('/api/worldlabs/generate', async (req, res) => {
       'WLT-Api-Key': process.env.WORLDLABS_API_KEY,
     },
     body: JSON.stringify({
-      display_name: `Barcelona ${style}`,
+      display_name: `Sagrada Família ${style}`,
       model,
       world_prompt: {
         type: 'text',
@@ -245,6 +245,6 @@ app.get('/api/worldlabs/world/:worldId', async (req, res) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`[barcelona-tour] Server running on port ${PORT}`);
-  console.log(`[barcelona-tour] Health: http://localhost:${PORT}/api/health`);
+  console.log(`[sagrada-familia-tour] Server running on port ${PORT}`);
+  console.log(`[sagrada-familia-tour] Health: http://localhost:${PORT}/api/health`);
 });

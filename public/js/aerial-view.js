@@ -1,7 +1,7 @@
 /**
  * aerial-view.js — Google Aerial View API client
  *
- * Requests a drone fly-over video render for the Barcelona coordinates,
+ * Requests a drone fly-over video render for the Sagrada Família coordinates,
  * polls until it is ready, then plays it as a full-screen video overlay.
  */
 

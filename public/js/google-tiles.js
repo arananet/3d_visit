@@ -14,10 +14,10 @@ import * as THREE from 'three';
 import { TilesRenderer } from '3d-tiles-renderer';
 import { GoogleCloudAuthPlugin } from '3d-tiles-renderer/plugins';
 
-// Barcelona coordinates (generic city-centre area — no brand reference)
+// Sagrada Família — Barcelona, Spain
 export const BARCELONA_COORDS = {
-  lat: 41.4036,
-  lng: 2.1744,
+  lat: 41.40363,
+  lng: 2.17435,
 };
 
 export class GoogleTilesLoader {

@@ -1,7 +1,7 @@
 {
-  "name": "barcelona-virtual-tour",
+  "name": "sagrada-familia-virtual-tour",
   "version": "1.0.0",
-  "description": "Guided 3D virtual tour of Barcelona blending Google 3D Tiles, Aerial View, and World Labs AI dreamscapes",
+  "description": "Guided 3D virtual tour of the Sagrada Família blending Google 3D Tiles, Aerial View, and World Labs AI dreamscapes",
   "main": "server.js",
   "type": "module",
   "engines": {

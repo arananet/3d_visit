@@ -55,7 +55,7 @@ export class SceneManager {
       0.1,
       1_000_000
     );
-    // Start high above Barcelona
+    // Start high above the Sagrada Família
     this.camera.position.set(0, 8000, 0);
     this.camera.lookAt(0, 0, 0);
   }
