@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Barcelona Virtual Tour</title>
+  <link rel="stylesheet" href="/css/main.css" />
+
+  <!-- Import map: resolve bare module specifiers for Three.js -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <!-- Loading screen -->
+  <div id="loading-screen">
+    <div class="loading-inner">
+      <h1>Barcelona Virtual Tour</h1>
+      <p id="loading-message">Initialising scene…</p>
+      <div class="progress-bar">
+        <div id="progress-fill"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Aerial video overlay (shown during story point 2) -->
+  <video
+    id="aerial-video"
+    muted
+    playsinline
+    preload="none"
+    aria-hidden="true"
+  ></video>
+
+  <!-- Three.js canvas mount point -->
+  <canvas id="main-canvas"></canvas>
+
+  <!-- HUD overlay -->
+  <div id="hud">
+    <div id="story-title"></div>
+    <div id="story-subtitle"></div>
+
+    <div id="progress-dots"></div>
+
+    <div id="nav-controls">
+      <button id="btn-prev" aria-label="Previous scene">&#8592;</button>
+      <button id="btn-next" aria-label="Next scene">&#8594;</button>
+    </div>
+
+    <div id="style-badge"></div>
+  </div>
+
+  <!-- Error toast -->
+  <div id="error-toast" role="alert" aria-live="assertive"></div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,328 @@
+openapi: 3.1.0
+info:
+  title: Barcelona Virtual Tour API
+  description: |
+    Server-side proxy API for the Barcelona Virtual Tour experience.
+    All third-party API keys (Google Maps, World Labs) are injected server-side.
+    Clients never receive raw API credentials.
+  version: 1.0.0
+  contact:
+    name: Barcelona Virtual Tour
+
+servers:
+  - url: /api
+    description: Local / Railway server
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: Returns server health status. Used by Railway for deployment health checks.
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /maps-config:
+    get:
+      operationId: getMapsConfig
+      summary: Get 3D Tiles configuration
+      description: |
+        Returns the Google Photorealistic 3D Tiles root URL with the API key
+        injected server-side. The client receives a ready-to-use URL without
+        ever seeing the raw key.
+      responses:
+        '200':
+          description: Tileset configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MapsConfigResponse'
+        '503':
+          description: Google Maps API key not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /aerial-view/render:
+    post:
+      operationId: renderAerialView
+      summary: Trigger aerial flyover video render
+      description: |
+        Proxies a render request to the Google Aerial View API.
+        Returns a videoId used to poll for render completion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AerialViewRenderRequest'
+      responses:
+        '200':
+          description: Render job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AerialViewRenderResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Google Aerial View API key not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /aerial-view/status/{videoId}:
+    get:
+      operationId: getAerialViewStatus
+      summary: Poll aerial video render status
+      description: |
+        Polls the Google Aerial View API for the current render state.
+        When state is ACTIVE, the videoUri is ready to play.
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Video ID returned by the render endpoint
+      responses:
+        '200':
+          description: Current render status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AerialViewStatusResponse'
+        '404':
+          description: Video ID not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /worldlabs/generate:
+    post:
+      operationId: generateWorld
+      summary: Generate a World Labs AI world
+      description: |
+        Triggers generation of a new 3D world via the World Labs Marble API.
+        Returns an operationId used to poll for completion.
+        Generation takes ~30-45s (mini) or ~5 minutes (plus).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorldGenerateRequest'
+      responses:
+        '200':
+          description: Generation job started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorldGenerateResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: World Labs API key not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /worldlabs/status/{operationId}:
+    get:
+      operationId: getWorldStatus
+      summary: Poll world generation status
+      description: |
+        Polls the World Labs operations endpoint. When done is true,
+        the worldId is available and can be fetched for assets.
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Operation ID returned by the generate endpoint
+      responses:
+        '200':
+          description: Current generation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorldStatusResponse'
+        '404':
+          description: Operation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /worldlabs/world/{worldId}:
+    get:
+      operationId: getWorld
+      summary: Retrieve completed world assets
+      description: |
+        Retrieves full world metadata including Gaussian Splat (SPZ) URLs,
+        collider mesh URL, and thumbnail. Only call once done === true.
+      parameters:
+        - name: worldId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: World ID from a completed operation
+      responses:
+        '200':
+          description: World assets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorldAssetsResponse'
+        '404':
+          description: World not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          example: ok
+        version:
+          type: string
+          example: 1.0.0
+
+    MapsConfigResponse:
+      type: object
+      required: [tilesetUrl]
+      properties:
+        tilesetUrl:
+          type: string
+          description: Full Google 3D Tiles root.json URL with API key
+          example: https://tile.googleapis.com/v1/3dtiles/root.json?key=INJECTED
+
+    AerialViewRenderRequest:
+      type: object
+      required: [coordinates]
+      properties:
+        coordinates:
+          type: object
+          required: [latitude, longitude]
+          properties:
+            latitude:
+              type: number
+              format: double
+              example: 41.4036
+            longitude:
+              type: number
+              format: double
+              example: 2.1744
+
+    AerialViewRenderResponse:
+      type: object
+      required: [videoId]
+      properties:
+        videoId:
+          type: string
+          description: Unique ID to poll for render status
+
+    AerialViewStatusResponse:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [PENDING, PROCESSING, ACTIVE, FAILED]
+        videoUri:
+          type: string
+          description: MP4 video URL, present when state is ACTIVE
+
+    WorldGenerateRequest:
+      type: object
+      required: [prompt, style]
+      properties:
+        prompt:
+          type: string
+          description: Text description of the world to generate
+          example: Cyberpunk version of Barcelona urban street, neon lights, rain reflections
+        style:
+          type: string
+          enum: [cyberpunk, sketch, futuristic]
+          description: Logical style label used to name and cache the world
+        model:
+          type: string
+          enum: [Marble 0.1-mini, Marble 0.1-plus]
+          default: Marble 0.1-plus
+          description: Generation model quality
+
+    WorldGenerateResponse:
+      type: object
+      required: [operationId]
+      properties:
+        operationId:
+          type: string
+          description: World Labs operation ID to poll
+
+    WorldStatusResponse:
+      type: object
+      required: [done]
+      properties:
+        done:
+          type: boolean
+        worldId:
+          type: string
+          description: Present when done is true
+
+    WorldAssetsResponse:
+      type: object
+      required: [worldId, splats]
+      properties:
+        worldId:
+          type: string
+        splats:
+          type: object
+          properties:
+            url100k:
+              type: string
+            url500k:
+              type: string
+            urlFullRes:
+              type: string
+        colliderMeshUrl:
+          type: string
+          description: GLB format collider mesh
+        thumbnailUrl:
+          type: string
+        panoramaUrl:
+          type: string
+        caption:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
